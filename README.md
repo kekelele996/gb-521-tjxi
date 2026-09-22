@@ -35,6 +35,7 @@ docker compose down -v --remove-orphans
 
 - 维护进风口、回风口、工作面、网络交点和有向巷道边，检测自环、孤立节点、边界缺失及不可达工作面。
 - 风机方案固定执行 `draft -> pending_review -> approved -> archived`，驳回返回 `draft` 并保留原因；版本条件更新防止并发越级。
+- 方案版本留痕：创建、草稿修订、提交、驳回、批准、归档都会在同一事务写入不可变版本快照，保留当时的风机曲线、运行模式、计算阈值与迭代上限；支持同一方案任意两个历史版本差异对比，归档后历史版本仍可追溯；只有草稿可修订或从历史版本恢复参数（恢复生成新版本，不覆盖旧记录），当前待审版本不能被任何旧版本替换。
 - 根据巷道阻力关系执行确定性迭代，保存输入快照、每轮最大残差、节点压力、边风量和历史运行，不使用随机数伪造结果。
 - 计算风速超限、反向流、工作面需风缺口和关键路径中断四类规则证据，并要求复核员或管理员人工确认。
 - JWT、RBAC、请求限流、request ID、结构化日志和不可变操作审计贯穿后端与前端权限表现。
@@ -125,7 +126,11 @@ npm --prefix frontend run build
 | `GET/POST` | `/api/v1/edges` | 巷道列表与创建 |
 | `GET/PUT` | `/api/v1/edges/:id` | 巷道详情与乐观锁更新 |
 | `GET/POST` | `/api/v1/scenarios` | 方案列表与草稿创建 |
+| `PUT` | `/api/v1/scenarios/:id` | 修订草稿参数（仅 draft，乐观锁，生成新版本快照） |
 | `POST` | `/api/v1/scenarios/:id/transition` | 提交、批准、驳回、归档 |
+| `GET` | `/api/v1/scenarios/:id/versions` | 同一方案的历史版本快照列表（归档后仍可查） |
+| `GET` | `/api/v1/scenarios/:id/versions/diff` | 两个历史版本差异：`from_version`、`to_version` |
+| `POST` | `/api/v1/scenarios/:id/versions/:version_id/restore` | 把历史版本参数恢复为新的草稿版本（不覆盖历史） |
 | `GET/POST` | `/api/v1/simulations` | 历史查询与批准方案推演，启动独立限流 |
 | `GET` | `/api/v1/simulations/:id` | 完整结果和残差历史 |
 | `POST` | `/api/v1/simulations/:id/confirm-risks` | 人工确认风险证据 |
@@ -135,12 +140,12 @@ npm --prefix frontend run build
 
 ## 共享枚举出现位置
 
-`ScenarioStatus = draft | pending_review | approved | archived`：
+`ScenarioStatus = draft | pending_review | approved | archived` 与版本留痕类别 `created | submitted | approved | rejected | archived | edited | restored | backfill`：
 
-- 数据库约束与 model：`backend/internal/model/fan_scenario.go`
+- 数据库约束与 model：`backend/internal/model/fan_scenario.go`（`FanScenario` 与不可变快照 `FanScenarioVersion`）
 - 后端常量与状态机：`backend/internal/constants/scenario.go`
 - DTO、repository、service、handler、router：`backend/internal/dto/fan_scenario.go`、`backend/internal/repository/fan_scenario.go`、`backend/internal/service/fan_scenario.go`、`backend/internal/handler/fan_scenario.go`、`backend/internal/router/fan_scenario.go`
-- 前端类型、API、store、共享状态组件、页面：`frontend/src/types/scenario.ts`、`frontend/src/api/scenarios.ts`、`frontend/src/stores/scenarioStore.ts`、`frontend/src/components/common/StatusBadge.tsx`、`frontend/src/pages/ScenariosPage.tsx`
+- 前端类型、API、store、共享状态组件、页面与历史组件：`frontend/src/types/scenario.ts`、`frontend/src/api/scenarios.ts`、`frontend/src/stores/scenarioStore.ts`、`frontend/src/components/common/StatusBadge.tsx`、`frontend/src/components/scenario/ScenarioHistoryDrawer.tsx`、`frontend/src/components/scenario/EditDraftModal.tsx`、`frontend/src/pages/ScenariosPage.tsx`
 
 `SimulationStatus = queued | running | converged | not_converged | invalid_input | failed`：
 

@@ -105,6 +105,14 @@ func ParseID(c *gin.Context) (uint, bool) {
 	return uint(value), true
 }
 
+func parseSubID(c *gin.Context, param string) (uint, error) {
+	value, err := strconv.ParseUint(c.Param(param), 10, 64)
+	if err != nil || value == 0 {
+		return 0, api.BadRequest("INVALID_VERSION", "历史版本号必须是正整数", nil)
+	}
+	return uint(value), nil
+}
+
 func parseOptionalTime(value string) (*time.Time, error) {
 	if strings.TrimSpace(value) == "" {
 		return nil, nil

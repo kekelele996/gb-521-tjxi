@@ -159,6 +159,10 @@ func mapRepositoryError(err error, entity string) error {
 		return api.Conflict("DUPLICATE_RESOURCE", entity+"已存在或操作已完成")
 	case errors.Is(err, repository.ErrVersionConflict):
 		return api.Conflict("VERSION_CONFLICT", "数据已被其他操作者更新，请刷新后重试")
+	case errors.Is(err, repository.ErrScenarioNotDraft):
+		return api.Conflict("SCENARIO_NOT_DRAFT", "只有草稿状态的方案可以修订参数，当前待审版本不能被替换")
+	case errors.Is(err, repository.ErrVersionNotFound):
+		return api.NotFound("方案历史版本")
 	default:
 		return api.Internal(fmt.Errorf("repository %s: %w", entity, err))
 	}

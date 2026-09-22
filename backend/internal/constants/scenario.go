@@ -39,6 +39,33 @@ func CanTransitionScenario(from, to ScenarioStatus) bool {
 	}
 }
 
+type ScenarioVersionKind string
+
+const (
+	ScenarioVersionCreated   ScenarioVersionKind = "created"
+	ScenarioVersionSubmitted ScenarioVersionKind = "submitted"
+	ScenarioVersionApproved  ScenarioVersionKind = "approved"
+	ScenarioVersionRejected  ScenarioVersionKind = "rejected"
+	ScenarioVersionArchived  ScenarioVersionKind = "archived"
+	ScenarioVersionEdited    ScenarioVersionKind = "edited"
+	ScenarioVersionRestored  ScenarioVersionKind = "restored"
+	ScenarioVersionBackfill  ScenarioVersionKind = "backfill"
+)
+
+// TransitionVersionKind 把状态迁移目标映射到留痕类别，驳回目标状态为 draft。
+func TransitionVersionKind(to ScenarioStatus) ScenarioVersionKind {
+	switch to {
+	case ScenarioStatusPendingReview:
+		return ScenarioVersionSubmitted
+	case ScenarioStatusApproved:
+		return ScenarioVersionApproved
+	case ScenarioStatusArchived:
+		return ScenarioVersionArchived
+	default:
+		return ScenarioVersionRejected
+	}
+}
+
 func ValidRole(value string) bool {
 	switch Role(value) {
 	case RoleEngineer, RoleReviewer, RoleAdmin:

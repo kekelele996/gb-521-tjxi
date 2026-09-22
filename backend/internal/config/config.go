@@ -87,6 +87,7 @@ func OpenDatabase(cfg Config) (*gorm.DB, error) {
 			&model.VentilationNode{},
 			&model.AirwayEdge{},
 			&model.FanScenario{},
+			&model.FanScenarioVersion{},
 			&model.SimulationRun{},
 			&model.AuditEvent{},
 		); err != nil {
@@ -96,6 +97,9 @@ func OpenDatabase(cfg Config) (*gorm.DB, error) {
 	if cfg.SeedData {
 		if err := seed(db); err != nil {
 			return nil, fmt.Errorf("seed database: %w", err)
+		}
+		if err := backfillScenarioVersions(db); err != nil {
+			return nil, fmt.Errorf("backfill scenario versions: %w", err)
 		}
 	}
 	return db, nil
@@ -159,11 +163,23 @@ func seed(db *gorm.DB) error {
 			return err
 		}
 		curve := datatypes.JSON([]byte(`[{"flow_m3s":0,"pressure_pa":1450},{"flow_m3s":30,"pressure_pa":1180},{"flow_m3s":60,"pressure_pa":720}]`))
+		curveRevised := datatypes.JSON([]byte(`[{"flow_m3s":0,"pressure_pa":1380},{"flow_m3s":30,"pressure_pa":1120},{"flow_m3s":60,"pressure_pa":690}]`))
+		now := time.Now().UTC()
 		scenarios := []model.FanScenario{
-			{Name: "夜班基准方案", Description: "当前网络的基准风机曲线，用于离线比较。", FanCurveJSON: curve, OperatingMode: "normal", ScenarioStatus: string(constants.ScenarioStatusApproved), SolverTolerance: 0.02, MaxIterations: 100, Version: 2, CreatedBy: users[0].ID, ApprovedBy: &users[1].ID},
+			{Name: "夜班基准方案", Description: "当前网络的基准风机曲线，用于离线比较。", FanCurveJSON: curveRevised, OperatingMode: "normal", ScenarioStatus: string(constants.ScenarioStatusApproved), SolverTolerance: 0.02, MaxIterations: 100, Version: 4, CreatedBy: users[0].ID, ApprovedBy: &users[1].ID},
 			{Name: "检修降载草案", Description: "检修窗口的降载边界，仅供工程师提交复核。", FanCurveJSON: curve, OperatingMode: "reduced", ScenarioStatus: string(constants.ScenarioStatusDraft), SolverTolerance: 0.03, MaxIterations: 120, Version: 1, CreatedBy: users[0].ID},
 		}
 		if err := tx.Create(&scenarios).Error; err != nil {
+			return err
+		}
+		history := []model.FanScenarioVersion{
+			{ScenarioID: scenarios[0].ID, Version: 1, ChangeKind: "created", StatusAtChange: "draft", FanCurveJSON: curve, OperatingMode: "normal", SolverTolerance: 0.05, MaxIterations: 80, ActorID: users[0].ID, ActorEmail: users[0].Email, CreatedAt: now.Add(-72 * time.Hour)},
+			{ScenarioID: scenarios[0].ID, Version: 2, ChangeKind: "submitted", StatusAtChange: "pending_review", FanCurveJSON: curve, OperatingMode: "normal", SolverTolerance: 0.05, MaxIterations: 80, ActorID: users[0].ID, ActorEmail: users[0].Email, CreatedAt: now.Add(-70 * time.Hour)},
+			{ScenarioID: scenarios[0].ID, Version: 3, ChangeKind: "rejected", StatusAtChange: "draft", FanCurveJSON: curve, OperatingMode: "normal", SolverTolerance: 0.05, MaxIterations: 80, Reason: "残差阈值过宽，曲线末端压力需要随实测修正。", ActorID: users[1].ID, ActorEmail: users[1].Email, CreatedAt: now.Add(-48 * time.Hour)},
+			{ScenarioID: scenarios[0].ID, Version: 4, ChangeKind: "approved", StatusAtChange: "approved", FanCurveJSON: curveRevised, OperatingMode: "normal", SolverTolerance: 0.02, MaxIterations: 100, ActorID: users[1].ID, ActorEmail: users[1].Email, CreatedAt: now.Add(-24 * time.Hour)},
+			{ScenarioID: scenarios[1].ID, Version: 1, ChangeKind: "created", StatusAtChange: "draft", FanCurveJSON: curve, OperatingMode: "reduced", SolverTolerance: 0.03, MaxIterations: 120, ActorID: users[0].ID, ActorEmail: users[0].Email, CreatedAt: now.Add(-6 * time.Hour)},
+		}
+		if err := tx.Create(&history).Error; err != nil {
 			return err
 		}
 		return tx.Create(&model.AuditEvent{
@@ -173,6 +189,44 @@ func seed(db *gorm.DB) error {
 			Metadata: `{"source":"bootstrap"}`, CreatedAt: time.Now().UTC(),
 		}).Error
 	})
+}
+
+// backfillScenarioVersions 为引入版本留痕前已存在的方案补一条基线快照，保证归档前后均有版本可追溯。幂等执行。
+func backfillScenarioVersions(db *gorm.DB) error {
+	var scenarios []model.FanScenario
+	if err := db.Find(&scenarios).Error; err != nil {
+		return fmt.Errorf("load scenarios for version backfill: %w", err)
+	}
+	for i := range scenarios {
+		scenario := scenarios[i]
+		var count int64
+		if err := db.Model(&model.FanScenarioVersion{}).Where("scenario_id = ?", scenario.ID).Count(&count).Error; err != nil {
+			return fmt.Errorf("check scenario versions: %w", err)
+		}
+		if count > 0 {
+			continue
+		}
+		var user model.User
+		actorID := scenario.CreatedBy
+		actorEmail := "system@mine.local"
+		if err := db.First(&user, scenario.CreatedBy).Error; err == nil {
+			actorEmail = user.Email
+		}
+		snapshot := model.FanScenarioVersion{
+			ScenarioID: scenario.ID, Version: scenario.Version, ChangeKind: "backfill",
+			StatusAtChange: scenario.ScenarioStatus, FanCurveJSON: datatypes.JSON(scenario.FanCurveJSON),
+			OperatingMode: scenario.OperatingMode, SolverTolerance: scenario.SolverTolerance,
+			MaxIterations: scenario.MaxIterations, Reason: "历史数据基线快照",
+			ActorID: actorID, ActorEmail: actorEmail, CreatedAt: scenario.UpdatedAt,
+		}
+		if snapshot.CreatedAt.IsZero() {
+			snapshot.CreatedAt = time.Now().UTC()
+		}
+		if err := db.Create(&snapshot).Error; err != nil {
+			return fmt.Errorf("create backfill scenario version: %w", err)
+		}
+	}
+	return nil
 }
 
 func postgresDSN() string {

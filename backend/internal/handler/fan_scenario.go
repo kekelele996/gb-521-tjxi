@@ -60,6 +60,88 @@ func (h *FanScenarioHandler) Create(c *gin.Context) {
 	api.Created(c, item)
 }
 
+func (h *FanScenarioHandler) UpdateDraft(c *gin.Context) {
+	id, ok := ParseID(c)
+	if !ok {
+		return
+	}
+	actor, err := ActorFromContext(c)
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	var input dto.UpdateDraftScenarioRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		api.BindError(c, err)
+		return
+	}
+	item, err := h.service.UpdateDraft(c.Request.Context(), id, input, actor)
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	api.OK(c, item)
+}
+
+func (h *FanScenarioHandler) Versions(c *gin.Context) {
+	id, ok := ParseID(c)
+	if !ok {
+		return
+	}
+	var query dto.ScenarioVersionQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		api.BindError(c, err)
+		return
+	}
+	items, total, page, pageSize, err := h.service.ListVersions(c.Request.Context(), id, query)
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	api.Page(c, items, page, pageSize, total)
+}
+
+func (h *FanScenarioHandler) CompareVersions(c *gin.Context) {
+	id, ok := ParseID(c)
+	if !ok {
+		return
+	}
+	var query dto.ScenarioVersionDiffQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		api.BindError(c, err)
+		return
+	}
+	comparison, err := h.service.CompareVersions(c.Request.Context(), id, query)
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	api.OK(c, comparison)
+}
+
+func (h *FanScenarioHandler) RestoreVersion(c *gin.Context) {
+	id, ok := ParseID(c)
+	if !ok {
+		return
+	}
+	actor, err := ActorFromContext(c)
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	sourceVersion, err := parseSubID(c, "version_id")
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	item, err := h.service.RestoreVersion(c.Request.Context(), id, sourceVersion, actor)
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	api.OK(c, item)
+}
+
 func (h *FanScenarioHandler) Transition(c *gin.Context) {
 	id, ok := ParseID(c)
 	if !ok {
