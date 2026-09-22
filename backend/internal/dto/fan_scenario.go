@@ -26,3 +26,8 @@ type ScenarioListQuery struct {
 	Status   string `form:"status"`
 	Search   string `form:"search"`
 }
+
+type CompareVersionsQuery struct {
+	From uint `form:"from" binding:"required,gte=1"`
+	To   uint `form:"to" binding:"required,gte=1"`
+}

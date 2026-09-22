@@ -12,6 +12,8 @@ func registerFanScenarioRoutes(group *gin.RouterGroup, h *handler.FanScenarioHan
 	scenarios := group.Group("/scenarios")
 	scenarios.GET("", h.List)
 	scenarios.GET("/:id", h.Get)
+	scenarios.GET("/:id/versions", h.ListVersions)
+	scenarios.GET("/:id/versions/compare", h.CompareVersions)
 	scenarios.POST("", middleware.RBACMiddleware(string(constants.RoleEngineer), string(constants.RoleAdmin)), h.Create)
 	scenarios.POST("/:id/transition", middleware.RBACMiddleware(string(constants.RoleEngineer), string(constants.RoleReviewer), string(constants.RoleAdmin)), h.Transition)
 }

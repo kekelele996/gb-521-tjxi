@@ -9,6 +9,17 @@ const (
 	ScenarioStatusArchived      ScenarioStatus = "archived"
 )
 
+type ScenarioVersionAction string
+
+const (
+	ScenarioVersionCreated   ScenarioVersionAction = "created"
+	ScenarioVersionSubmitted ScenarioVersionAction = "submitted"
+	ScenarioVersionApproved  ScenarioVersionAction = "approved"
+	ScenarioVersionRejected  ScenarioVersionAction = "rejected"
+	ScenarioVersionArchived  ScenarioVersionAction = "archived"
+	ScenarioVersionBaseline  ScenarioVersionAction = "baseline"
+)
+
 type Role string
 
 const (

@@ -82,3 +82,34 @@ func (h *FanScenarioHandler) Transition(c *gin.Context) {
 	}
 	api.OK(c, item)
 }
+
+func (h *FanScenarioHandler) ListVersions(c *gin.Context) {
+	id, ok := ParseID(c)
+	if !ok {
+		return
+	}
+	items, err := h.service.ListVersions(c.Request.Context(), id)
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	api.OK(c, items)
+}
+
+func (h *FanScenarioHandler) CompareVersions(c *gin.Context) {
+	id, ok := ParseID(c)
+	if !ok {
+		return
+	}
+	var query dto.CompareVersionsQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		api.BindError(c, err)
+		return
+	}
+	comparison, err := h.service.CompareVersions(c.Request.Context(), id, query.From, query.To)
+	if err != nil {
+		api.Fail(c, err)
+		return
+	}
+	api.OK(c, comparison)
+}

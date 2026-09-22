@@ -54,7 +54,7 @@ func (s *FanScenarioService) Create(ctx context.Context, input dto.CreateFanScen
 		ScenarioStatus: string(constants.ScenarioStatusDraft), SolverTolerance: input.SolverTolerance,
 		MaxIterations: input.MaxIterations, Version: 1, CreatedBy: actor.ID,
 	}
-	if err := s.scenarios.Create(ctx, scenario, actor.Audit("fan_scenario.created", "fan_scenario")); err != nil {
+	if err := s.scenarios.Create(ctx, scenario, string(constants.ScenarioVersionCreated), actor.Audit("fan_scenario.created", "fan_scenario")); err != nil {
 		return nil, mapRepositoryError(err, "风机方案")
 	}
 	return scenario, nil
@@ -75,11 +75,28 @@ func (s *FanScenarioService) Transition(ctx context.Context, id uint, input dto.
 	}
 	audit := actor.Audit("fan_scenario."+string(to), "fan_scenario")
 	audit.Metadata = fmt.Sprintf(`{"reason":%q}`, strings.TrimSpace(input.Reason))
-	updated, err := s.scenarios.Transition(ctx, id, actor.ID, input.Version, string(from), string(to), strings.TrimSpace(input.Reason), audit)
+	updated, err := s.scenarios.Transition(ctx, id, actor.ID, input.Version, string(from), string(to), string(versionActionForStatus(to)), strings.TrimSpace(input.Reason), audit)
 	if err != nil {
 		return nil, mapRepositoryError(err, "风机方案")
 	}
 	return updated, nil
+}
+
+// versionActionForStatus 把状态迁移目标映射为版本快照动作，
+// 保证每次提交、驳回、批准、归档都留下带动作语义的参数快照。
+func versionActionForStatus(to constants.ScenarioStatus) constants.ScenarioVersionAction {
+	switch to {
+	case constants.ScenarioStatusPendingReview:
+		return constants.ScenarioVersionSubmitted
+	case constants.ScenarioStatusApproved:
+		return constants.ScenarioVersionApproved
+	case constants.ScenarioStatusDraft:
+		return constants.ScenarioVersionRejected
+	case constants.ScenarioStatusArchived:
+		return constants.ScenarioVersionArchived
+	default:
+		return constants.ScenarioVersionBaseline
+	}
 }
 
 func validateFanCurve(points []dto.FanCurvePoint) error {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -44,10 +45,13 @@ func (r *FanScenarioRepository) Find(ctx context.Context, id uint) (*model.FanSc
 	return &scenario, nil
 }
 
-func (r *FanScenarioRepository) Create(ctx context.Context, scenario *model.FanScenario, audit AuditRecord) error {
+func (r *FanScenarioRepository) Create(ctx context.Context, scenario *model.FanScenario, action string, audit AuditRecord) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(scenario).Error; err != nil {
 			return fmt.Errorf("create fan scenario: %w", err)
+		}
+		if err := recordVersion(tx, scenario, action, "", audit); err != nil {
+			return err
 		}
 		after, _ := json.Marshal(scenario)
 		audit.EntityID = scenario.ID
@@ -56,7 +60,7 @@ func (r *FanScenarioRepository) Create(ctx context.Context, scenario *model.FanS
 	})
 }
 
-func (r *FanScenarioRepository) Transition(ctx context.Context, id, actorID uint, expectedVersion uint, from, to, reason string, audit AuditRecord) (*model.FanScenario, error) {
+func (r *FanScenarioRepository) Transition(ctx context.Context, id, actorID uint, expectedVersion uint, from, to, action, reason string, audit AuditRecord) (*model.FanScenario, error) {
 	var updated model.FanScenario
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var before model.FanScenario
@@ -87,6 +91,9 @@ func (r *FanScenarioRepository) Transition(ctx context.Context, id, actorID uint
 		if err := tx.First(&updated, id).Error; err != nil {
 			return err
 		}
+		if err := recordVersion(tx, &updated, action, reason, audit); err != nil {
+			return err
+		}
 		beforeJSON, _ := json.Marshal(before)
 		afterJSON, _ := json.Marshal(updated)
 		audit.EntityID = id
@@ -98,4 +105,50 @@ func (r *FanScenarioRepository) Transition(ctx context.Context, id, actorID uint
 		return nil, err
 	}
 	return &updated, nil
+}
+
+func (r *FanScenarioRepository) ListVersions(ctx context.Context, scenarioID uint) ([]model.FanScenarioVersion, error) {
+	var items []model.FanScenarioVersion
+	if err := r.db.WithContext(ctx).
+		Where("scenario_id = ?", scenarioID).
+		Order("version DESC").
+		Find(&items).Error; err != nil {
+		return nil, fmt.Errorf("list fan scenario versions: %w", err)
+	}
+	return items, nil
+}
+
+func (r *FanScenarioRepository) FindVersion(ctx context.Context, scenarioID uint, version uint) (*model.FanScenarioVersion, error) {
+	var item model.FanScenarioVersion
+	if err := r.db.WithContext(ctx).
+		Where("scenario_id = ? AND version = ?", scenarioID, version).
+		First(&item).Error; err != nil {
+		return nil, fmt.Errorf("find fan scenario version: %w", err)
+	}
+	return &item, nil
+}
+
+// recordVersion 在同一事务内追加当前参数的不可变快照；版本号唯一约束
+// 使任何重复写入（包括用旧版本覆盖当前待审版本）直接失败并回滚事务。
+func recordVersion(tx *gorm.DB, scenario *model.FanScenario, action, reason string, audit AuditRecord) error {
+	snapshot := model.FanScenarioVersion{
+		ScenarioID:      scenario.ID,
+		Version:         scenario.Version,
+		ScenarioStatus:  scenario.ScenarioStatus,
+		Name:            scenario.Name,
+		Description:     scenario.Description,
+		FanCurveJSON:    scenario.FanCurveJSON,
+		OperatingMode:   scenario.OperatingMode,
+		SolverTolerance: scenario.SolverTolerance,
+		MaxIterations:   scenario.MaxIterations,
+		Action:          action,
+		ActorID:         audit.ActorID,
+		ActorEmail:      audit.ActorEmail,
+		Reason:          reason,
+		CreatedAt:       time.Now().UTC(),
+	}
+	if err := tx.Create(&snapshot).Error; err != nil {
+		return fmt.Errorf("record fan scenario version: %w", err)
+	}
+	return nil
 }

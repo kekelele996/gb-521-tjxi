@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Button, Form, Input, InputNumber, Modal, Select, Table, message } from 'antd';
-import { CheckCheck, GitCompareArrows, Plus, Send, Undo2 } from 'lucide-react';
+import { CheckCheck, GitCompareArrows, History, Plus, Send, Undo2 } from 'lucide-react';
 import type { ColumnsType } from 'antd/es/table';
 import type { Key } from 'react';
 import { ConfirmActionDialog } from '../components/common/ConfirmActionDialog';
 import { PageHeader } from '../components/common/PageHeader';
 import { StatusBadge } from '../components/common/StatusBadge';
+import { ScenarioVersionsModal } from '../components/scenarios/ScenarioVersionsModal';
 import { useAuth } from '../hooks/useAuth';
 import { useEdgeStore } from '../stores/edgeStore';
 import { useScenarioStore } from '../stores/scenarioStore';
@@ -24,6 +25,7 @@ export function ScenariosPage() {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
+  const [historyScenario, setHistoryScenario] = useState<FanScenario | null>(null);
   const [form] = Form.useForm();
   const canCreate = hasRole('engineer', 'admin');
   useEffect(() => { Promise.all([load(), loadEdges()]).catch((error) => reportError(error, '方案数据加载失败')); }, [load, loadEdges]);
@@ -63,6 +65,7 @@ export function ScenariosPage() {
     { title: '迭代上限', dataIndex: 'max_iterations', width: 110 },
     { title: '最近更新', dataIndex: 'updated_at', width: 180, render: formatDateTime },
     { title: '复核动作', width: 220, render: (_, row) => actionButtons(row) },
+    { title: '版本留痕', width: 120, render: (_, row) => <Button size="small" icon={<History size={15} />} onClick={() => setHistoryScenario(row)}>历史版本</Button> },
   ];
   const compared = scenarios.filter((item) => selectedKeys.includes(item.id));
   return (
@@ -84,6 +87,7 @@ export function ScenariosPage() {
         </Form>
       </Modal>
       <ConfirmActionDialog open={Boolean(pending)} title={pending?.status === 'approved' ? '批准风机方案' : pending?.status === 'draft' ? '驳回方案至草稿' : pending?.status === 'archived' ? '归档已批准方案' : '提交方案复核'} consequence={pending?.status === 'approved' ? '批准后该版本可用于离线推演。此动作会记录操作者、请求 ID 与版本前后状态。' : pending?.status === 'draft' ? '方案将回到草稿，驳回原因会保留在版本记录中。' : pending?.status === 'archived' ? '归档后该版本不能再发起新的推演。' : '提交后工程师不能直接批准，须由复核员或管理员处理。'} confirmLabel={pending?.status === 'approved' ? '批准方案' : pending?.status === 'draft' ? '驳回至草稿' : pending?.status === 'archived' ? '归档方案' : '提交复核'} noteLabel={pending?.status === 'draft' ? '驳回原因' : '操作说明'} note={note} requireNote={pending?.status === 'draft'} busy={busy} onNoteChange={setNote} onCancel={() => { setPending(null); setNote(''); }} onConfirm={() => void commitTransition()} />
+      <ScenarioVersionsModal scenario={historyScenario} onClose={() => setHistoryScenario(null)} />
     </div>
   );
 }

@@ -87,6 +87,7 @@ func OpenDatabase(cfg Config) (*gorm.DB, error) {
 			&model.VentilationNode{},
 			&model.AirwayEdge{},
 			&model.FanScenario{},
+			&model.FanScenarioVersion{},
 			&model.SimulationRun{},
 			&model.AuditEvent{},
 		); err != nil {
@@ -98,7 +99,49 @@ func OpenDatabase(cfg Config) (*gorm.DB, error) {
 			return nil, fmt.Errorf("seed database: %w", err)
 		}
 	}
+	if cfg.AutoMigrate {
+		if err := backfillScenarioVersions(db); err != nil {
+			return nil, fmt.Errorf("backfill scenario versions: %w", err)
+		}
+	}
 	return db, nil
+}
+
+// backfillScenarioVersions 为版本留痕上线前已存在的方案补一条基线快照，
+// 使存量方案（含已归档）的历史可追溯起点完整；已存在版本记录的方案跳过。
+func backfillScenarioVersions(db *gorm.DB) error {
+	var scenarios []model.FanScenario
+	if err := db.Find(&scenarios).Error; err != nil {
+		return fmt.Errorf("list scenarios for version backfill: %w", err)
+	}
+	for _, scenario := range scenarios {
+		var count int64
+		if err := db.Model(&model.FanScenarioVersion{}).Where("scenario_id = ?", scenario.ID).Count(&count).Error; err != nil {
+			return fmt.Errorf("count versions for scenario %d: %w", scenario.ID, err)
+		}
+		if count > 0 {
+			continue
+		}
+		baseline := model.FanScenarioVersion{
+			ScenarioID:      scenario.ID,
+			Version:         scenario.Version,
+			ScenarioStatus:  scenario.ScenarioStatus,
+			Name:            scenario.Name,
+			Description:     scenario.Description,
+			FanCurveJSON:    scenario.FanCurveJSON,
+			OperatingMode:   scenario.OperatingMode,
+			SolverTolerance: scenario.SolverTolerance,
+			MaxIterations:   scenario.MaxIterations,
+			Action:          string(constants.ScenarioVersionBaseline),
+			ActorID:         scenario.CreatedBy,
+			ActorEmail:      "system@migration",
+			CreatedAt:       scenario.UpdatedAt,
+		}
+		if err := db.Create(&baseline).Error; err != nil {
+			return fmt.Errorf("backfill version for scenario %d: %w", scenario.ID, err)
+		}
+	}
+	return nil
 }
 
 func ConfigureLogger(level slog.Level) *slog.Logger {

@@ -118,6 +118,14 @@ legend { padding: 0 7px; color: var(--coal-600); font-size: 0.76rem; font-weight
 .compare-grid dt { color: var(--coal-600); font-size: 0.7rem; }
 .compare-grid dd { margin: 0; font-weight: 700; }
 
+.version-note { margin: 0 0 14px; padding: 10px 12px; background: var(--surface-muted); border-left: 3px solid var(--green); color: var(--coal-800); font-size: 0.78rem; line-height: 1.6; }
+.version-curve { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 4px 0; font-size: 0.78rem; color: var(--coal-800); }
+.version-curve span { white-space: nowrap; }
+.version-diff { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 14px; }
+.version-diff .section-heading { margin-bottom: 0; }
+.version-diff h3 { margin: 0; font-size: 0.92rem; }
+.diff-changed td { background: #faf1d5 !important; }
+
 .run-launcher { margin-top: 22px; min-height: 76px; display: grid; grid-template-columns: minmax(190px, 1fr) minmax(240px, 360px) auto; align-items: center; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line); }
 .run-launcher > div { display: flex; align-items: center; gap: 8px; }
 .run-launcher h2 { margin: 0; font-size: 0.98rem; }

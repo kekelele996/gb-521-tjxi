@@ -30,3 +30,46 @@ export interface CreateScenarioInput {
   solver_tolerance: number;
   max_iterations: number;
 }
+
+export type ScenarioVersionAction = 'created' | 'submitted' | 'approved' | 'rejected' | 'archived' | 'baseline';
+
+export interface FanScenarioVersion {
+  id: number;
+  scenario_id: number;
+  version: number;
+  scenario_status: ScenarioStatus;
+  name: string;
+  description: string;
+  fan_curve_json: FanCurvePoint[];
+  operating_mode: FanScenario['operating_mode'];
+  solver_tolerance: number;
+  max_iterations: number;
+  action: ScenarioVersionAction;
+  actor_id: number;
+  actor_email: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface VersionFieldDiff {
+  field: string;
+  label: string;
+  before: string;
+  after: string;
+  changed: boolean;
+}
+
+export interface FanCurvePointDiff {
+  index: number;
+  before?: FanCurvePoint;
+  after?: FanCurvePoint;
+  changed: boolean;
+}
+
+export interface ScenarioVersionComparison {
+  scenario_id: number;
+  from: FanScenarioVersion;
+  to: FanScenarioVersion;
+  fields: VersionFieldDiff[];
+  curve: FanCurvePointDiff[];
+}
